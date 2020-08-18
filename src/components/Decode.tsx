@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Paper, Typography, Button, Grid } from '@material-ui/core'
 import { makeStyles } from '@material-ui/core/styles'
 import ImageSearchIcon from '@material-ui/icons/ImageSearch'
-import { ImageCanvas, DecodeImageCanvas } from './Canvas'
+import { ImageCanvas, DecodableCanvas } from './Canvas'
 import useImage from '../hooks/image'
 
 const useStyles = makeStyles(theme => ({
@@ -50,7 +50,7 @@ const Decode: React.FC = () => {
       </label>
       <Grid container direction="column" justify="center" alignItems="flex-start">
         <ImageCanvas img={image} onContextChange={ctx => setStego(ctx)} />
-        <DecodeImageCanvas stego={stego} width={image?.width} height={image?.height} />
+        <DecodableCanvas stego={stego} width={image?.width} height={image?.height} />
       </Grid>
     </Paper>
   )
