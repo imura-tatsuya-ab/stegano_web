@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Paper, Typography, Button, Grid } from '@material-ui/core'
 import { makeStyles } from '@material-ui/core/styles'
 import ImageSearchIcon from '@material-ui/icons/ImageSearch'
-import { ImageCanvas, DrawableCanvas, EncodeImageCanvas } from './Canvas'
+import { ImageCanvas, DrawableCanvas, EncodeImageCanvas, EncodeStringCanvas } from './Canvas'
 import useImage from '../hooks/image'
 
 const useStyles = makeStyles(theme => ({
@@ -61,6 +61,7 @@ const Encode: React.FC = () => {
           width={image?.width}
           height={image?.height}
         />
+        <EncodeStringCanvas img={image} />
       </Grid>
     </Paper>
   )

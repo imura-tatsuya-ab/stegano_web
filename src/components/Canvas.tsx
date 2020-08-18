@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { makeStyles } from '@material-ui/core/styles'
-import { Grid, Button } from '@material-ui/core'
+import { Grid, Button, TextField } from '@material-ui/core'
 import DeleteIcon from '@material-ui/icons/Delete'
 import FormatPaintIcon from '@material-ui/icons/FormatPaint'
 import VisibilityIcon from '@material-ui/icons/Visibility'
@@ -249,6 +249,187 @@ export const DecodeImageCanvas: React.FC<{
       <Grid container item>
         <canvas className={classes.canvas} ref={ref} width={width} height={height}></canvas>
       </Grid>
+      <Grid item>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<VisibilityIcon />}
+          onClick={handleDecode}
+        >
+          読み取り
+        </Button>
+      </Grid>
+    </Grid>
+  )
+}
+
+export const EncodeStringCanvas: React.FC<{
+  img?: HTMLImageElement
+}> = ({ img }) => {
+  const classes = useStyles()
+  const [secret, setSecret] = React.useState('')
+  const coverRef = React.useRef<HTMLCanvasElement>(null)
+  const stegoRef = React.useRef<HTMLCanvasElement>(null)
+  React.useEffect(() => {
+    if (coverRef.current && img) {
+      const ctx = coverRef.current.getContext('2d')
+      ctx.drawImage(img, 0, 0, img.width, img.height)
+    }
+  }, [img])
+  const handleEncode = React.useCallback(() => {
+    if (coverRef.current && stegoRef.current) {
+      const encoder = new TextEncoder()
+      const uint8View = encoder.encode(secret)
+      const byteSize = uint8View.length
+      // 32bit(データバイトサイズ) + データサイズ * 8bit
+      const bits = new Uint8Array(32 + byteSize * 8)
+      // 最初の32bitにデータ長を保存する
+      for (let i = 0; i < 32; i++) {
+        const bit = (byteSize & (1 << i)) >> i
+        bits[i] = bit
+      }
+      // データを保存
+      for (let i = 0; i < byteSize; i++) {
+        const byteData = uint8View[i]
+        for (let j = 0; j < 8; j++) {
+          const bit = (byteData & (1 << j)) >> j
+          bits[32 + i * 8 + j] = bit
+        }
+      }
+      const stego = stegoRef.current.getContext('2d')
+      const cover = coverRef.current.getContext('2d')
+      const stegoImageData = stego.getImageData(0, 0, img.width, img.height)
+      const coverData = cover.getImageData(0, 0, img.width, img.height).data
+      let j = 0
+      for (let i = 0; i < stegoImageData.data.length; i += 4) {
+        let r = coverData[i]
+        let g = coverData[i + 1]
+        let b = coverData[i + 2]
+        if (j < bits.length) {
+          r = (r & 0b11111110) | bits[j]
+          j++
+        }
+        if (j < bits.length) {
+          g = (g & 0b11111110) | bits[j]
+          j++
+        }
+        if (j < bits.length) {
+          b = (b & 0b11111110) | bits[j]
+          j++
+        }
+        stegoImageData.data[i] = r // R
+        stegoImageData.data[i + 1] = g // G
+        stegoImageData.data[i + 2] = b // B
+        stegoImageData.data[i + 3] = 255
+      }
+      stego.putImageData(stegoImageData, 0, 0)
+    }
+  }, [secret])
+  if (!img) return <></>
+  return (
+    <Grid container direction="column" spacing={3}>
+      <Grid container item>
+        <canvas
+          className={classes.canvas}
+          ref={coverRef}
+          width={img.width}
+          height={img.height}
+        ></canvas>
+      </Grid>
+      <Grid container item>
+        <canvas
+          className={classes.canvas}
+          ref={stegoRef}
+          width={img.width}
+          height={img.height}
+        ></canvas>
+      </Grid>
+      <Grid container item>
+        <TextField
+          label="埋め込みたい文章"
+          multiline
+          rowsMax={4}
+          variant="outlined"
+          value={secret}
+          onChange={e => setSecret(e.target.value)}
+        />
+      </Grid>
+      <Grid container item>
+        <Button
+          disabled={secret.length <= 0}
+          variant="contained"
+          color="primary"
+          startIcon={<FormatPaintIcon />}
+          onClick={handleEncode}
+        >
+          生成
+        </Button>
+      </Grid>
+    </Grid>
+  )
+}
+
+export const DecodeStringCanvas: React.FC<{
+  stego: CanvasRenderingContext2D
+  width?: number
+  height?: number
+}> = ({ stego, width, height }) => {
+  const classes = useStyles()
+  const handleDecode = React.useCallback(() => {
+    const stegoData = stego.getImageData(0, 0, width, height).data
+
+    // 最初にデータサイズだけ取得する
+    let byteSize = 0
+    let j = 0
+    for (let i = 0; i < stegoData.length; i += 4) {
+      if (j < 32) {
+        byteSize |= (stegoData[i] & 0b00000001) << j
+        j++
+      }
+      if (j < 32) {
+        byteSize |= (stegoData[i + 1] & 0b00000001) << j
+        j++
+      }
+      if (j < 32) {
+        byteSize |= (stegoData[i + 2] & 0b00000001) << j
+        j++
+      }
+      if (j >= 32) break
+    }
+    if (byteSize <= 0) return
+
+    const bits = new Uint8Array(32 + byteSize * 8)
+    const uint8View = new Uint8Array(byteSize)
+    j = 0
+    for (let i = 0; i < stegoData.length; i += 4) {
+      if (j < bits.length) {
+        bits[j] = stegoData[i] & 0b00000001
+        j++
+      }
+      if (j < bits.length) {
+        bits[j] = stegoData[i + 1] & 0b00000001
+        j++
+      }
+      if (j < bits.length) {
+        bits[j] = stegoData[i + 2] & 0b00000001
+        j++
+      }
+      if (j >= bits.length) break
+    }
+    // データを取り出す
+    for (let i = 0; i < byteSize; i++) {
+      let byteData = 0
+      for (let j = 0; j < 8; j++) {
+        byteData |= bits[32 + i * 8 + j] << j
+      }
+      uint8View[i] = byteData
+    }
+    const decoder = new TextDecoder()
+    console.log(decoder.decode(uint8View))
+  }, [stego])
+  if (!stego) return <></>
+  return (
+    <Grid container direction="column" spacing={3}>
       <Grid item>
         <Button
           variant="contained"
