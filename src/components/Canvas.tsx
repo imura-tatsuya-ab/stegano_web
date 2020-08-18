@@ -102,7 +102,7 @@ export const DrawableCanvas: React.FC<{
   }
   if (!p.width && !p.height) return <></>
   return (
-    <Grid container direction="column" spacing={3}>
+    <>
       <Grid container item>
         <canvas
           className={classes.canvas}
@@ -150,51 +150,133 @@ export const DrawableCanvas: React.FC<{
           </Button>
         </Grid>
       </Grid>
-    </Grid>
+    </>
   )
 }
 
-export const EncodeImageCanvas: React.FC<{
-  cover: CanvasRenderingContext2D
+const encodeImage = (
+  canvas: HTMLCanvasElement,
+  cover: CanvasRenderingContext2D,
   secret: CanvasRenderingContext2D
-  width?: number
-  height?: number
-}> = ({ cover, secret, width, height }) => {
-  const classes = useStyles()
-  const ref = React.useRef<HTMLCanvasElement>(null)
-  const handleEncode = React.useCallback(() => {
-    if (ref.current) {
-      const ctx = ref.current.getContext('2d')
-      const imageData = ctx.getImageData(0, 0, width, height)
-      const coverData = cover.getImageData(0, 0, width, height).data
-      const secretData = secret.getImageData(0, 0, width, height).data
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        imageData.data[i] = (coverData[i] & 0b11111110) | (secretData[i] >> 7) // R
-        imageData.data[i + 1] = (coverData[i + 1] & 0b11111110) | (secretData[i + 1] >> 7) // G
-        imageData.data[i + 2] = (coverData[i + 2] & 0b11111110) | (secretData[i + 2] >> 7) // B
-        imageData.data[i + 3] = 255
-      }
-      ctx.putImageData(imageData, 0, 0)
-    }
-  }, [cover, secret, width, height])
+) => {
+  const ctx = canvas.getContext('2d')
+  const width = canvas.width
+  const height = canvas.height
+  const imageData = ctx.getImageData(0, 0, width, height)
+  const coverData = cover.getImageData(0, 0, width, height).data
+  const secretData = secret.getImageData(0, 0, width, height).data
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    imageData.data[i] = (coverData[i] & 0b11111110) | (secretData[i] >> 7) // R
+    imageData.data[i + 1] = (coverData[i + 1] & 0b11111110) | (secretData[i + 1] >> 7) // G
+    imageData.data[i + 2] = (coverData[i + 2] & 0b11111110) | (secretData[i + 2] >> 7) // B
+    imageData.data[i + 3] = 255
+  }
+  ctx.putImageData(imageData, 0, 0)
+}
 
-  const handleSave = () => {
-    if (ref.current) {
-      const ctx = ref.current.getContext('2d')
-      const data = ctx.getImageData(0, 0, width, height)
-      ref.current.toBlob(blob => {
-        const a = document.createElement('a')
-        a.href = URL.createObjectURL(blob)
-        a.download = 'stego'
-        a.click()
-      })
+const encodeString = (
+  canvas: HTMLCanvasElement,
+  cover: CanvasRenderingContext2D,
+  secret: string
+) => {
+  const encoder = new TextEncoder()
+  const uint8View = encoder.encode(secret)
+  const byteSize = uint8View.length
+  // 32bit(データバイトサイズ) + データサイズ * 8bit
+  const bits = new Uint8Array(32 + byteSize * 8)
+  // 最初の32bitにデータ長を保存する
+  for (let i = 0; i < 32; i++) {
+    const bit = (byteSize & (1 << i)) >> i
+    bits[i] = bit
+  }
+  // データを保存
+  for (let i = 0; i < byteSize; i++) {
+    const byteData = uint8View[i]
+    for (let j = 0; j < 8; j++) {
+      const bit = (byteData & (1 << j)) >> j
+      bits[32 + i * 8 + j] = bit
     }
   }
-  if (!cover || !secret) return <></>
+  const ctx = canvas.getContext('2d')
+  const width = canvas.width
+  const height = canvas.height
+  const imageData = ctx.getImageData(0, 0, width, height)
+  const coverData = cover.getImageData(0, 0, width, height).data
+  let j = 0
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    let r = coverData[i]
+    let g = coverData[i + 1]
+    let b = coverData[i + 2]
+    if (j < bits.length) {
+      r = (r & 0b11111110) | bits[j]
+      j++
+    }
+    if (j < bits.length) {
+      g = (g & 0b11111110) | bits[j]
+      j++
+    }
+    if (j < bits.length) {
+      b = (b & 0b11111110) | bits[j]
+      j++
+    }
+    imageData.data[i] = r // R
+    imageData.data[i + 1] = g // G
+    imageData.data[i + 2] = b // B
+    imageData.data[i + 3] = 255
+  }
+  ctx.putImageData(imageData, 0, 0)
+}
+
+const saveImage = (canvas: HTMLCanvasElement) => {
+  canvas.toBlob(blob => {
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'stego'
+    a.click()
+  })
+}
+
+export const EncodableCanvas: React.FC<{
+  cover: CanvasRenderingContext2D
+  width?: number
+  height?: number
+}> = ({ cover, width, height }) => {
+  const classes = useStyles()
+  const [secretCtx, setSecretCtx] = React.useState<CanvasRenderingContext2D>()
+  const [secretString, setSecretString] = React.useState('')
+  const ref = React.useRef<HTMLCanvasElement>(null)
+  const handleImageEncode = React.useCallback(() => {
+    if (ref.current) {
+      encodeImage(ref.current, cover, secretCtx)
+    }
+  }, [secretCtx, cover])
+
+  const handleStringEncode = React.useCallback(() => {
+    if (ref.current) {
+      encodeString(ref.current, cover, secretString)
+    }
+  }, [secretString, cover])
+  const handleSave = () => {
+    if (ref.current) {
+      saveImage(ref.current)
+    }
+  }
+  if (!cover) return <></>
   return (
     <Grid container direction="column" spacing={3}>
+      <DrawableCanvas width={width} height={height} onContextChange={ctx => setSecretCtx(ctx)} />
       <Grid container item>
         <canvas className={classes.canvas} ref={ref} width={width} height={height}></canvas>
+      </Grid>
+      <Grid container item>
+        <TextField
+          label="埋め込みたい文章"
+          multiline
+          rowsMax={4}
+          variant="outlined"
+          value={secretString}
+          onChange={e => setSecretString(e.target.value)}
+        />
       </Grid>
       <Grid container item direction="row" justify="flex-start" alignItems="center" spacing={3}>
         <Grid item>
@@ -202,9 +284,20 @@ export const EncodeImageCanvas: React.FC<{
             variant="contained"
             color="primary"
             startIcon={<FormatPaintIcon />}
-            onClick={handleEncode}
+            onClick={handleImageEncode}
           >
-            生成
+            画像エンコード
+          </Button>
+        </Grid>
+        <Grid item>
+          <Button
+            disabled={secretString.length <= 0}
+            variant="contained"
+            color="primary"
+            startIcon={<FormatPaintIcon />}
+            onClick={handleStringEncode}
+          >
+            文字列エンコード
           </Button>
         </Grid>
         <Grid item>
@@ -257,112 +350,6 @@ export const DecodeImageCanvas: React.FC<{
           onClick={handleDecode}
         >
           読み取り
-        </Button>
-      </Grid>
-    </Grid>
-  )
-}
-
-export const EncodeStringCanvas: React.FC<{
-  img?: HTMLImageElement
-}> = ({ img }) => {
-  const classes = useStyles()
-  const [secret, setSecret] = React.useState('')
-  const coverRef = React.useRef<HTMLCanvasElement>(null)
-  const stegoRef = React.useRef<HTMLCanvasElement>(null)
-  React.useEffect(() => {
-    if (coverRef.current && img) {
-      const ctx = coverRef.current.getContext('2d')
-      ctx.drawImage(img, 0, 0, img.width, img.height)
-    }
-  }, [img])
-  const handleEncode = React.useCallback(() => {
-    if (coverRef.current && stegoRef.current) {
-      const encoder = new TextEncoder()
-      const uint8View = encoder.encode(secret)
-      const byteSize = uint8View.length
-      // 32bit(データバイトサイズ) + データサイズ * 8bit
-      const bits = new Uint8Array(32 + byteSize * 8)
-      // 最初の32bitにデータ長を保存する
-      for (let i = 0; i < 32; i++) {
-        const bit = (byteSize & (1 << i)) >> i
-        bits[i] = bit
-      }
-      // データを保存
-      for (let i = 0; i < byteSize; i++) {
-        const byteData = uint8View[i]
-        for (let j = 0; j < 8; j++) {
-          const bit = (byteData & (1 << j)) >> j
-          bits[32 + i * 8 + j] = bit
-        }
-      }
-      const stego = stegoRef.current.getContext('2d')
-      const cover = coverRef.current.getContext('2d')
-      const stegoImageData = stego.getImageData(0, 0, img.width, img.height)
-      const coverData = cover.getImageData(0, 0, img.width, img.height).data
-      let j = 0
-      for (let i = 0; i < stegoImageData.data.length; i += 4) {
-        let r = coverData[i]
-        let g = coverData[i + 1]
-        let b = coverData[i + 2]
-        if (j < bits.length) {
-          r = (r & 0b11111110) | bits[j]
-          j++
-        }
-        if (j < bits.length) {
-          g = (g & 0b11111110) | bits[j]
-          j++
-        }
-        if (j < bits.length) {
-          b = (b & 0b11111110) | bits[j]
-          j++
-        }
-        stegoImageData.data[i] = r // R
-        stegoImageData.data[i + 1] = g // G
-        stegoImageData.data[i + 2] = b // B
-        stegoImageData.data[i + 3] = 255
-      }
-      stego.putImageData(stegoImageData, 0, 0)
-    }
-  }, [secret])
-  if (!img) return <></>
-  return (
-    <Grid container direction="column" spacing={3}>
-      <Grid container item>
-        <canvas
-          className={classes.canvas}
-          ref={coverRef}
-          width={img.width}
-          height={img.height}
-        ></canvas>
-      </Grid>
-      <Grid container item>
-        <canvas
-          className={classes.canvas}
-          ref={stegoRef}
-          width={img.width}
-          height={img.height}
-        ></canvas>
-      </Grid>
-      <Grid container item>
-        <TextField
-          label="埋め込みたい文章"
-          multiline
-          rowsMax={4}
-          variant="outlined"
-          value={secret}
-          onChange={e => setSecret(e.target.value)}
-        />
-      </Grid>
-      <Grid container item>
-        <Button
-          disabled={secret.length <= 0}
-          variant="contained"
-          color="primary"
-          startIcon={<FormatPaintIcon />}
-          onClick={handleEncode}
-        >
-          生成
         </Button>
       </Grid>
     </Grid>

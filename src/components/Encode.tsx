@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Paper, Typography, Button, Grid } from '@material-ui/core'
 import { makeStyles } from '@material-ui/core/styles'
 import ImageSearchIcon from '@material-ui/icons/ImageSearch'
-import { ImageCanvas, DrawableCanvas, EncodeImageCanvas, EncodeStringCanvas } from './Canvas'
+import { ImageCanvas, EncodableCanvas } from './Canvas'
 import useImage from '../hooks/image'
 
 const useStyles = makeStyles(theme => ({
@@ -17,6 +17,9 @@ const useStyles = makeStyles(theme => ({
     marginTop: 10,
     marginBottom: 30,
   },
+  subtitle: {
+    marginTop: 30,
+  },
   button: {
     margin: theme.spacing(1),
   },
@@ -25,7 +28,6 @@ const useStyles = makeStyles(theme => ({
 const Encode: React.FC = () => {
   const classes = useStyles()
   const [cover, setCover] = React.useState<CanvasRenderingContext2D>()
-  const [secret, setSecret] = React.useState<CanvasRenderingContext2D>()
   const { image, handleFileChange } = useImage()
   return (
     <Paper className={classes.paper}>
@@ -50,18 +52,7 @@ const Encode: React.FC = () => {
       </label>
       <Grid container direction="column" justify="center" alignItems="flex-start">
         <ImageCanvas img={image} onContextChange={ctx => setCover(ctx)} />
-        <DrawableCanvas
-          width={image?.width}
-          height={image?.height}
-          onContextChange={ctx => setSecret(ctx)}
-        />
-        <EncodeImageCanvas
-          cover={cover}
-          secret={secret}
-          width={image?.width}
-          height={image?.height}
-        />
-        <EncodeStringCanvas img={image} />
+        <EncodableCanvas cover={cover} width={image?.width} height={image?.height} />
       </Grid>
     </Paper>
   )
